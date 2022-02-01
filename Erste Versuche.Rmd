@@ -12,9 +12,32 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(mitools)
 library(smcfcs)
+library(pacman)
+p_load(VIM, mice, MASS,
+       tidyverse)
 
 set.seed(123)
 ```
+
+
+```{r}
+#dataset ex_linquad
+
+dat <- ex_linquad
+
+summary(dat)
+dim(dat)
+str(dat)
+
+# simulated dataset with just 5 numerical variables one of which is x-squared
+aggr(dat)
+# half of the x values are missing and therefore half of x squared are also missing
+
+
+
+```
+
+
 
 Lineare model
 
@@ -23,16 +46,36 @@ Lineare model
 
 imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~z+x+xsq",method=c("","","norm","x^2",""))
 
+# method seems to be impute than transform
+
+# look at one of the imputated datasets:
+
+imputed1 <- imps$impDatasets[[1]]
+
+imputed1 %>% view()
+
+# is x squared always actually x^2 even in the imputated data?
+
+sum(imputed1$x^2 == imputed1$xsq)
+
 # use mitools to fit substantive model to imputed data using rubins rules
 
-impobj <- imputationList(imps$impDatasets)
-models <- with(impobj, lm(y~z+x+xsq))
-summary(MIcombine(models))
+impobj <- imputationList(imps$impDatasets) # create impuationlist which can be used later in different MI routines
+models <- with(impobj, lm(y~z+x+xsq))  # fit the substantive model on all 5 imputated datasets
+summary(MIcombine(models)) # combines the results from the models from the different imputated datasets using rubins rules
 
-# examine the convergence with 100 iterations and m = 1
+# examine the convergence with 100 iterations 
 
-imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~z+x+xsq", method=c("","","norm","x^2",""),m=1,numit=100)
+imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~z+x+xsq", method=c("","","norm","x^2",""),m=5,numit=100)
 plot(imps$smCoefIter[1,3,])
 ```
 
-Test123
+
+```{r}
+test <- imps$impDatasets[[1]]
+```
+
+```{r}
+test$x^2 == test$xsq
+```
+
