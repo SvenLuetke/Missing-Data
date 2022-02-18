@@ -35,6 +35,9 @@ aggr(dat)
 
 
 
+
+
+
 ```
 
 
@@ -66,7 +69,9 @@ summary(MIcombine(models)) # combines the results from the models from the diffe
 
 # examine the convergence with 100 iterations 
 
-imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~z+x+xsq", method=c("","","norm","x^2",""),m=5,numit=100)
+
+
+imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~z+x+xsq", method=c("","","norm","x^2",""),m=5,numit=10)
 plot(imps$smCoefIter[1,3,])
 ```
 
@@ -77,5 +82,11 @@ test <- imps$impDatasets[[1]]
 
 ```{r}
 test$x^2 == test$xsq
+```
+
+# Simulieren eigenen Datensets
+
+```{r}
+
 ```
 

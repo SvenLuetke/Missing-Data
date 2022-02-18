@@ -1,0 +1,56 @@
+----
+title: "Missing Data Simulation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(pacman)
+p_load(VIM)
+p_load(mice)
+p_load(MASS)
+p_load(dplyr)
+p_load(smcfcs)
+
+```
+
+
+# Simulieren der Daten
+
+```{r}
+set.seed(12345)
+
+# Mu,ber of variables: 
+p <- 3  
+# 3000 observations:
+n <- 3000
+
+# draw expected values from uniform distribution
+mu <- c(5,10,20)
+
+
+# Covariance Matrix
+
+v <- matrix(0.5, p, p)   # correlation of 0.5 betweenn all variables
+
+diag(v) <- 1 # eventuell mit inverse wishart draw ersetzen aber bisher noch nict angeschaut wie des geht
+
+
+v
+
+x_df_org <- mvrnorm(n, mu, v) %>% data.frame()
+names(x_df_org) <- paste0("x_", 1:3)
+head(x_df_org)
+```
+
+
+```{r}
+output <- lm(x_1 ~ x_2 + x_3, data = x_df_org)
+
+summary(output)
+```
+
