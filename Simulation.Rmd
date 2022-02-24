@@ -15,6 +15,7 @@ p_load(mice)
 p_load(MASS)
 p_load(dplyr)
 p_load(smcfcs)
+p_load(tidyverse)
 
 ```
 sdsd
@@ -22,35 +23,123 @@ sdsd
 # Simulieren der Daten
 
 ```{r}
-set.seed(12345)
+set.seed(123)
 
-# Mu,ber of variables: 
-p <- 3  
-# 3000 observations:
-n <- 3000
-
-# draw expected values from uniform distribution
-mu <- c(5,10,20)
+# Number of variables: Brauchen wir des?
+# p <- 3  
 
 
-# Covariance Matrix
+# 1000 observations:
+n <- 1000
+fake_data_list <- vector("list", length = 10)
 
-v <- matrix(0.5, p, p)   # correlation of 0.5 betweenn all variables
-
-diag(v) <- 1 # eventuell mit inverse wishart draw ersetzen aber bisher noch nict angeschaut wie des geht
+# draw values from normal distribution:
 
 
-v
+for (i in 1:10){
+  x1 <- rnorm(n,3,1)
+  x2 <- x1^2    # x squared as one variable
 
-x_df_org <- mvrnorm(n, mu, v) %>% data.frame()
-names(x_df_org) <- paste0("x_", 1:3)
-head(x_df_org)
+  y <- 5 + 4*x1 + x2 + rnorm(1000, 0, 10)
+
+  fake_data <- data.frame(x1,x2,y)
+  fake_data_list[[i]] <- fake_data
+}
+
+
 ```
+
+# Maybe the same with log(x) and an interaction between two variables
 
 
 ```{r}
-output <- lm(x_1 ~ x_2 + x_3, data = x_df_org)
+output <- lm(y ~ x2 + x1, data = fake_data)
 
 summary(output)
+```
+
+
+# Simulation of Missingness: MCAR and MAR
+
+```{r}
+
+
+# MCAR:
+
+mcar <- function(obs_data, missing, missing_var) {
+  output <- obs_data
+  output[sample(1:nrow(obs_data), size = nrow(obs_data) * missing),
+         missing_var] <- NA
+  output
+}
+
+fake_data_missing_mcar <- lapply(fake_data_list, mcar, 0.5, c("x1", "x2"))
+
+
+# MAR
+
+mar <- function(obs_data, missing, missing_var, ctrl_var) {
+  # model missingness via linear regression model
+  # depending on 'ctrl_var' and random error
+  output <- obs_data
+  mis_mar <-
+    0.5 + 2 * obs_data[, ctrl_var] +
+    rnorm(nrow(obs_data), 0, 3)
+  mis_index <- mis_mar < quantile(mis_mar, missing)
+  output[mis_index, missing_var] <- NA
+  output
+}
+
+
+fake_data_missing_mar <- lapply(fake_data_list, mar, 0.5, c("x1", "x2"), "x2")
+
+```
+
+# Pattern Missing Data
+
+```{r}
+aggr(fake_data_missing_mar[[1]])
+
+marginplot(fake_data_missing_mar[[1]][, c("x1", "y")])
+marginplot(fake_data_missing_mcar[[1]][, c("x1", "y")])
+
+
+fake_data %>% ggplot(aes(y,x1)) +
+  geom_point() +
+  geom_point(aes(fake_data_missing_mar[[1]]$y,fake_data_missing_mar[[1]]$x1), color = "red")
+
+
+```
+
+
+
+
+# JAV and ItT with Cart and SMC-FCS
+
+```{r}
+
+```
+
+# SMC FCS
+
+```{r}
+
+#linear model with quadratic covariate effect
+
+imp_list <- lapply(fake_data_missing_list, smcfcs,smtype="lm", smformula="y~x1+x2",method=c("norm","x1^2",""))
+
+
+# use mitools to fit substantive model to imputed data using rubins rules
+
+impobj <- imputationList(imps$impDatasets) # create impuationlist which can be used later in different MI routines
+models <- with(impobj, lm(y~z+x+xsq))  # fit the substantive model on all 5 imputated datasets
+summary(MIcombine(models)) # combines the results from the models from the different imputated datasets using rubins rules
+
+# examine the convergence with 100 iterations 
+
+
+
+imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~z+x+xsq", method=c("","","norm","x^2",""),m=5,numit=10)
+plot(imps$smCoefIter[1,3,])
 ```
 
