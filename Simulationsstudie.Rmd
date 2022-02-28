@@ -8,6 +8,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+
+library(parallel)
 library(pacman)
 p_load(VIM)
 p_load(mice)
@@ -17,6 +19,9 @@ p_load(smcfcs)
 p_load(tidyverse)
 p_load(pbapply)
 ```
+
+
+
 
 
 #Generate the testdata
@@ -33,17 +38,18 @@ generate_testdata <- function(n_obs,
   
   set.seed(seed)
   
-  X1 <- rnorm(n_obs, 8, 3)
-  X2 <- X1^2
-  X3 <- 5 + 0.6 * X1 + 0.5 * X2 + rnorm(n_obs, 0, sqrt(2))
+  x1 <- rnorm(n_obs, 8, 3)
+  x_sqrd <- x1^2
+  x2 <- x1 + rnorm(n_obs, 8, 3)
+  y <-  4 * x1 + x_sqrd + 2 * x2 + rnorm(n_obs, 0, sqrt(2))
   
-  obs_data <-  data.frame(X3, X2, X1)
+  obs_data <-  data.frame(y, x_sqrd, x1,x2)
   
   # delete observations depending on the mechanism
   missing_data <- switch(
     missing_mechanism,
-    "MCAR" = mcar(obs_data, missing, c("X1", "X2")),
-    "MAR"  = mar(obs_data, missing, c("X1", "X2"), "X1")
+    "MCAR" = mcar(obs_data, missing, c("x1", "x_sqrd")),
+    "MAR"  = mar(obs_data, missing, c("x1", "x_sqrd"), "x1")
   )
       
     list(obs_data, missing_data, inputs = c(n_obs, 
@@ -110,23 +116,38 @@ datasets <-
 
 
 data_sets_all <- datasets
-datasets <- datasets[1:10]
+datasets <- data_sets_all[1:12]
 
 ```
 
-SMCFCS
+# SMCFCS
 
 ```{r}
-imputated_data_set <- pblapply(datasets, function(x){
+cl <- makeCluster(10)
+
+# Parallel:
+
+clusterEvalQ(cl, library(smcfcs))
+
+system.time(imputated_data_set <- parLapply(cl, datasets, function(x){
   mis_data <- x[[2]]
   
   
-  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "X3 ~ X1 + X2", method =c("", "X1^2", "norm"))
+  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "y ~ x1 + x2 + x_sqrd", method =c("", "x1^2", "norm", ""), 
+                        rjlimit = 3000, )
   
-})
+}))
 
 
+stopCluster(cl)
 
+
+```
+
+# Test if default number of iterations is fine
+
+```{r}
+lapply(imputated_data_set, plot)
 
 ```
 
