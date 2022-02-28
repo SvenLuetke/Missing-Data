@@ -1,0 +1,132 @@
+---
+title: "Simulationsstudie"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+p_load(VIM)
+p_load(mice)
+p_load(MASS)
+p_load(dplyr)
+p_load(smcfcs)
+p_load(tidyverse)
+p_load(pbapply)
+```
+
+
+#Generate the testdata
+
+```{r}
+generate_testdata <- function(n_obs, 
+                              missing_mechanism,
+                              # mechanism of missing obs_data
+                              seed = NULL,
+                              missing){
+  if (is.null(seed)) {
+    seed <- sys.time()
+    }
+  
+  set.seed(seed)
+  
+  X1 <- rnorm(n_obs, 8, 3)
+  X2 <- X1^2
+  X3 <- 5 + 0.6 * X1 + 0.5 * X2 + rnorm(n_obs, 0, sqrt(2))
+  
+  obs_data <-  data.frame(X3, X2, X1)
+  
+  # delete observations depending on the mechanism
+  missing_data <- switch(
+    missing_mechanism,
+    "MCAR" = mcar(obs_data, missing, c("X1", "X2")),
+    "MAR"  = mar(obs_data, missing, c("X1", "X2"), "X1")
+  )
+      
+    list(obs_data, missing_data, inputs = c(n_obs, 
+                              missing_mechanism,
+                              missing))  
+  
+}
+
+mcar <- function(obs_data, missing, missing_var) {
+  output <- obs_data
+  output[sample(1:nrow(obs_data), size = nrow(obs_data) * missing),
+         missing_var] <- NA
+  output
+}
+
+mar <- function(obs_data, missing, missing_var, ctrl_var) {
+  # model missingness via linear regression model
+  # depending on 'ctrl_var' and random error
+  output <- obs_data
+  mis_mar <-
+    0.5 + 2 * obs_data[, ctrl_var] +
+    rnorm(nrow(obs_data), 0, 3)
+  mis_index <- mis_mar < quantile(mis_mar, missing)
+  output[mis_index, missing_var] <- NA
+  output
+}
+```
+
+#Test design
+
+```{r}
+test_design <- expand.grid(c(100L, 1000L), # number of observartions
+                           c("MCAR", "MAR"),
+                           19500,
+                           c(0.1, 0.3, 0.5), 
+                           c(1:1000),stringsAsFactors = FALSE)
+
+names(test_design) <- c("n_obs", "missing_mechanism", "seed", "missing", "id")
+
+test_design %>% head()
+
+
+
+
+
+```
+
+# Apply the design to generate data
+
+```{r}
+
+#Generate 1000 different datasets for each case
+
+
+
+datasets <-
+  test_design %>%
+  pbapply(MARGIN = 1,
+    function(x){ generate_testdata(n_obs = as.integer(x["n_obs"]),
+      missing_mechanism = as.character(x["missing_mechanism"]),
+      seed = as.integer(x["seed"]),
+      missing = as.numeric(x["missing"])
+      )})
+
+
+data_sets_all <- datasets
+datasets <- datasets[1:10]
+
+```
+
+SMCFCS
+
+```{r}
+imputated_data_set <- pblapply(datasets, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "X3 ~ X1 + X2", method =c("", "X1^2", "norm"))
+  
+})
+
+
+
+
+```
+
