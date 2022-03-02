@@ -18,6 +18,7 @@ p_load(dplyr)
 p_load(smcfcs)
 p_load(tidyverse)
 p_load(pbapply)
+p_load(mitools)
 ```
 
 
@@ -38,10 +39,10 @@ generate_testdata <- function(n_obs,
   
   set.seed(seed)
   
-  x1 <- rnorm(n_obs, 8, 3)
+  x1 <- rnorm(n_obs, 2, 1)
   x_sqrd <- x1^2
-  x2 <- x1 + rnorm(n_obs, 8, 3)
-  y <-  4 * x1 + x_sqrd + 2 * x2 + rnorm(n_obs, 0, sqrt(2))
+  x2 <- x1 + rnorm(n_obs, 0, 3)
+  y <-  4 * x1 + x_sqrd + 2 * x2 + rnorm(n_obs, 0, 10)
   
   obs_data <-  data.frame(y, x_sqrd, x1,x2)
   
@@ -49,7 +50,7 @@ generate_testdata <- function(n_obs,
   missing_data <- switch(
     missing_mechanism,
     "MCAR" = mcar(obs_data, missing, c("x1", "x_sqrd")),
-    "MAR"  = mar(obs_data, missing, c("x1", "x_sqrd"), "x1")
+    "MAR"  = mar(obs_data, missing, c("x1", "x_sqrd"), "x2")
   )
       
     list(obs_data, missing_data, inputs = c(n_obs, 
@@ -78,18 +79,56 @@ mar <- function(obs_data, missing, missing_var, ctrl_var) {
 }
 ```
 
+# Generate Testdata with Interaction
+
+```{r}
+generate_testdata_interaktion <- function(n_obs, 
+                              missing_mechanism,
+                              # mechanism of missing obs_data
+                              seed = NULL,
+                              missing){
+  if (is.null(seed)) {
+    seed <- sys.time()
+    }
+  
+  set.seed(seed)
+  
+  x1 <- rnorm(n_obs, 2, 1)
+  x2 <- rnorm(n_obs, 2, 1)
+  x3 <- x1 + rnorm(n_obs, 0, 3)
+  y <-  2*x1 + 3*x2  + 2 * x3 + 2 * x1*x2 + rnorm(n_obs, 0, 10)
+  
+  obs_data <-  data.frame(y, x1, x2,x3)
+  
+  # delete observations depending on the mechanism
+  missing_data <- switch(
+    missing_mechanism,
+    "MCAR" = mcar(obs_data, missing, c("x1", "x2")),
+    "MAR"  = mar(obs_data, missing, c("x1", "x2"), "x3")
+  )
+      
+    list(obs_data, missing_data, inputs = c(n_obs, 
+                              missing_mechanism,
+                              missing))  
+  
+}
+```
+
+
+
+
+
 #Test design
 
 ```{r}
-test_design <- expand.grid(c(100L, 1000L), # number of observartions
+test_design <- expand.grid(c(300L, 1000L), # number of observartions
                            c("MCAR", "MAR"),
-                           19500,
-                           c(0.1, 0.3, 0.5), 
-                           c(1:1000),stringsAsFactors = FALSE)
+                           c(0.1, 0.3, 0.5),
+                           c(1:1000), stringsAsFactors = FALSE)
 
-names(test_design) <- c("n_obs", "missing_mechanism", "seed", "missing", "id")
+names(test_design) <- c("n_obs", "missing_mechanism", "missing", "seed")
 
-test_design %>% head()
+test_design %>% head(n = 12)
 
 
 
@@ -101,7 +140,7 @@ test_design %>% head()
 
 ```{r}
 
-#Generate 1000 different datasets for each case
+#Generate 1000 different datasets for each case with x^2
 
 
 
@@ -115,14 +154,67 @@ datasets <-
       )})
 
 
-data_sets_all <- datasets
-datasets <- data_sets_all[1:12]
+
+
+
+
+#data_sets_all <-  datasets
+#datasets <- data_sets_all[1:12]
+
+
+
+# do the same for data with interaction
+datasets_interaktion <-
+  test_design %>%
+  pbapply(MARGIN = 1,
+    function(x){ generate_testdata_interaktion(n_obs = as.integer(x["n_obs"]),
+      missing_mechanism = as.character(x["missing_mechanism"]),
+      seed = as.integer(x["seed"]),
+      missing = as.numeric(x["missing"])
+      )})
 
 ```
+
+# Missing Data
+
+Check the missing data pattern
+
+```{r}
+# data with x^2
+
+for(i in 1:length(datasets)){
+  marginplot(datasets[[i]][[2]][, c("x1","y")])
+             }
+
+# data with interaction:
+
+for(i in 1:12){
+  marginplot(datasets_interaktion[[i]][[2]][, c("x1","y")])
+             }
+
+# what is the r^2 for x^2:
+
+output <- lm("y ~ x1 +x2 + x_sqrd", data = datasets[[3]][[1]])
+
+summary(output)
+
+
+# what is the r^2 for interaction:
+
+```
+
+
+
+
+
+
 
 # SMCFCS
 
 ```{r}
+
+# X Squared
+
 cl <- makeCluster(10)
 
 # Parallel:
@@ -134,13 +226,36 @@ system.time(imputated_data_set <- parLapply(cl, datasets, function(x){
   
   
   imputations <- smcfcs(mis_data, smtype = "lm", smformula = "y ~ x1 + x2 + x_sqrd", method =c("", "x1^2", "norm", ""), 
-                        rjlimit = 3000, )
-  
+                        rjlimit = 3000)
 }))
 
 
 stopCluster(cl)
 
+
+# save imputed data from first set
+
+# saveRDS(imputated_data_set, "imputed_data_x_squared.rds")
+
+
+## For interaction
+
+cl <- makeCluster(10)
+
+# Parallel:
+
+clusterEvalQ(cl, library(smcfcs))
+
+system.time(imputated_data_set_interaktion <- parLapply(cl, datasets_interaktion, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "y ~ x1 + x2 + x1*x2 + x3 ", method =c("", "norm", "norm", ""), 
+                        rjlimit = 3000)
+}))
+
+
+stopCluster(cl)
 
 ```
 
@@ -148,6 +263,76 @@ stopCluster(cl)
 
 ```{r}
 lapply(imputated_data_set, plot)
+# saveRDS(imputated_data_set, file = "imputed_data_100_iterations.rds")
+# saveRDS(imputated_data_set_interaktion, file = "imputated_dataset_ineraktion.rds")
+
+```
+
+# Rubins Rule to get Values
+
+```{r}
+# true parameter x^2:
+
+true_value <- c(0,4,2,1)
+
+# Get Coverage of Imputed Dataset
+
+for(i in 1:length(datasets)){
+    impobj <- imputationList(imputated_data_set[[i]]$impDatasets) 
+    models <- with(impobj, lm(y~x1+x2+x_sqrd))
+    sum_model <- summary(MIcombine(models))
+    coverage <- sum_model$`(lower` < true_value & true_value < sum_model$`upper)`    
+    test_design[i,5] <- mean(coverage)
+    print(i)
+}
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage))
+
+```
+
+```{r}
+# Coverage with interaktion
+
+# true parameter:
+
+true_value <- c(0,2,3,2,2)
+
+# Get Coverage of Imputed Dataset
+
+for(i in 1:length(datasets_interaktion)){
+    impobj <- imputationList(imputated_data_set_interaktion[[i]]$impDatasets) 
+    models <- with(impobj, lm(y~x1+x2+x1*x2+x3))
+    sum_model <- summary(MIcombine(models))
+    coverage <- sum_model$`(lower` < true_value & true_value < sum_model$`upper)`    
+    test_design[i,5] <- mean(coverage)
+    print(i)
+}
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage))
 
 ```
 

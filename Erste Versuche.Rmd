@@ -47,7 +47,7 @@ Lineare model
 ```{r}
 #linear model with quadratic covariate effect
 
-imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~z+x+xsq",method=c("","","norm","x^2",""))
+imps <- smcfcs(ex_linquad, smtype="lm", smformula="y~x+xsq",method=c("","","norm","x^2",""))
 
 # method seems to be impute than transform
 

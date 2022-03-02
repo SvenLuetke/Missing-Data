@@ -25,21 +25,19 @@ sdsd
 ```{r}
 set.seed(123)
 
-# Number of variables: Brauchen wir des?
-# p <- 3  
 
 
 # 1000 observations:
 n <- 1000
-fake_data_list <- vector("list", length = 10)
+fake_data_list <- vector("list", length = 1000)
 
 # draw values from normal distribution:
 
 
 for (i in 1:10){
   x1 <- rnorm(n,3,1)
-  x2 <- x1^2    # x squared as one variable
-
+  x2 <- x1^2  # x squared as one variable
+  x3 <- 
   y <- 5 + 4*x1 + x2 + rnorm(1000, 0, 10)
 
   fake_data <- data.frame(x1,x2,y)
@@ -82,9 +80,7 @@ mar <- function(obs_data, missing, missing_var, ctrl_var) {
   # model missingness via linear regression model
   # depending on 'ctrl_var' and random error
   output <- obs_data
-  mis_mar <-
-    0.5 + 2 * obs_data[, ctrl_var] +
-    rnorm(nrow(obs_data), 0, 3)
+  mis_mar <- 0.5 + 2 * obs_data[, ctrl_var] + rnorm(nrow(obs_data), 0, 3)
   mis_index <- mis_mar < quantile(mis_mar, missing)
   output[mis_index, missing_var] <- NA
   output
