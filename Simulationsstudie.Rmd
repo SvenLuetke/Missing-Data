@@ -114,6 +114,40 @@ generate_testdata_interaktion <- function(n_obs,
 }
 ```
 
+# Generate Testdata for Log-Normal Distributed X
+
+```{r}
+generate_testdata_log <- function(n_obs, 
+                              missing_mechanism,
+                              # mechanism of missing obs_data
+                              seed = NULL,
+                              missing){
+  if (is.null(seed)) {
+    seed <- sys.time()
+    }
+  
+  set.seed(seed)
+  
+  x1 <- rlnorm(n_obs, log(2), log(2))
+  x_sqrd <- x1^2
+  x2 <- x1 + rnorm(n_obs, 0, 3)
+  y <-  4 * x1 + x_sqrd + 2 * x2 + rnorm(n_obs, 0, 20)
+  
+  obs_data <-  data.frame(y, x_sqrd, x1,x2)
+  
+  # delete observations depending on the mechanism
+  missing_data <- switch(
+    missing_mechanism,
+    "MCAR" = mcar(obs_data, missing, c("x1", "x_sqrd")),
+    "MAR"  = mar(obs_data, missing, c("x1", "x_sqrd"), "x2")
+  )
+      
+    list(obs_data, missing_data, inputs = c(n_obs, 
+                              missing_mechanism,
+                              missing))  
+  
+}
+```
 
 
 
@@ -173,6 +207,20 @@ datasets_interaktion <-
       missing = as.numeric(x["missing"])
       )})
 
+
+
+# gerade data for log normal
+
+datasets_log <-
+  test_design %>%
+  pbapply(MARGIN = 1,
+    function(x){ generate_testdata_log(n_obs = as.integer(x["n_obs"]),
+      missing_mechanism = as.character(x["missing_mechanism"]),
+      seed = as.integer(x["seed"]),
+      missing = as.numeric(x["missing"])
+      )})
+
+
 ```
 
 # Missing Data
@@ -199,7 +247,11 @@ output <- lm("y ~ x1 +x2 + x_sqrd", data = datasets[[3]][[1]])
 summary(output)
 
 
-# what is the r^2 for interaction:
+# what is the r^2 for log:
+
+output <- lm("y ~ x1 +x2 + x_sqrd", data = datasets_log[[3]][[1]])
+
+summary(output)
 
 ```
 
@@ -257,14 +309,45 @@ system.time(imputated_data_set_interaktion <- parLapply(cl, datasets_interaktion
 
 stopCluster(cl)
 
+
+# For log Distribution
+
+cl <- makeCluster(10)
+
+# Parallel:
+
+clusterEvalQ(cl, library(smcfcs))
+
+system.time(imputated_data_set_log <- parLapply(cl, datasets_log, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "y ~ x1 + x2 + x_sqrd", method =c("", "x1^2", "norm", ""), 
+                        rjlimit = 3000)
+}))
+
+
+stopCluster(cl)
+
+
+
 ```
 
 # Test if default number of iterations is fine
 
 ```{r}
 lapply(imputated_data_set, plot)
+
+### SAVE THE IMPUTED DATASETS
+
 # saveRDS(imputated_data_set, file = "imputed_data_100_iterations.rds")
 # saveRDS(imputated_data_set_interaktion, file = "imputated_dataset_ineraktion.rds")
+#saveRDS(imputated_data_set_log, file = "imputated_data_log.rds")
+
+
+### LOAD IMPUTED DATASETS
+
+
 
 ```
 
@@ -283,14 +366,21 @@ for(i in 1:length(datasets)){
     sum_model <- summary(MIcombine(models))
     coverage <- sum_model$`(lower` < true_value & true_value < sum_model$`upper)`    
     test_design[i,5] <- mean(coverage)
+    
+    # bias
+    
+    bias <- imputated_data_set[[i]]$impDatasets[[1]]$x1 - datasets[[i]][[1]]$x1
+    
+    test_design[i,6] <- mean(bias)
+    
     print(i)
-}
+    }
 
 
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
 colnames(test_design)
 
 
@@ -298,7 +388,47 @@ colnames(test_design)
 
 test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+
+```
+
+
+```{r}
+# true parameter x^2:
+
+true_value <- c(0,4,2,1)
+
+# Get Coverage of Imputed Dataset
+
+for(i in 1:length(datasets_log)){
+    impobj <- imputationList(imputated_data_set_log[[i]]$impDatasets) 
+    models <- with(impobj, lm(y~x1+x2+x_sqrd))
+    sum_model <- summary(MIcombine(models))
+    coverage <- sum_model$`(lower` < true_value & true_value < sum_model$`upper)`    
+    test_design[i,5] <- mean(coverage)
+    
+    # bias
+    
+    bias <- imputated_data_set_log[[i]]$impDatasets[[1]]$x1 - datasets_log[[i]][[1]]$x1
+    
+    test_design[i,6] <- mean(bias)
+    
+    print(i)
+    }
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
 
 ```
 
@@ -317,6 +447,11 @@ for(i in 1:length(datasets_interaktion)){
     sum_model <- summary(MIcombine(models))
     coverage <- sum_model$`(lower` < true_value & true_value < sum_model$`upper)`    
     test_design[i,5] <- mean(coverage)
+    
+    
+    bias <- imputated_data_set_interaktion[[i]]$impDatasets[[1]]$x1 - datasets_interaktion[[i]][[1]]$x1
+    test_design[i,6] <- mean(bias)
+      
     print(i)
 }
 
@@ -324,7 +459,7 @@ for(i in 1:length(datasets_interaktion)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
 colnames(test_design)
 
 
@@ -332,7 +467,55 @@ colnames(test_design)
 
 test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+
+```
+
+# CART
+
+```{r}
+
+
+## normal data
+
+cl <- makeCluster(10)
+
+# Parallel:
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_cart <- parLapply(cl, datasets, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- mice(mis_data, method = "cart")
+}))
+
+data_completet_dart <- lapply(imputated_data_set_cart, FUN = complete, action = "long", include = FALSE)
+
+## data with log-normal
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_cart_log <- parLapply(cl, datasets_log, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- mice(mis_data, method = "cart")
+}))
+
+
+# data with interaction
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_cart_interaktion <- parLapply(cl, datasets_interaktion, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- mice(mis_data, method = "cart")
+}))
+
 
 ```
 
