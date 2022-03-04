@@ -516,6 +516,160 @@ system.time(imputated_data_set_cart_interaktion <- parLapply(cl, datasets_intera
   imputations <- mice(mis_data, method = "cart")
 }))
 
+stopCluster(cl)
+
+
+```
+
+# Diagnose Cart
+
+```{r}
+# bias
+
+data_completet_dart <- lapply(imputated_data_set_cart, FUN = complete, action = "long", include = FALSE)
+data_completet_dart_log <- lapply(imputated_data_set_cart_log, FUN = complete, action = "long", include = FALSE)
+data_completet_dart_interaktion <- lapply(imputated_data_set_cart_interaktion, FUN = complete, action = "long", include = FALSE)
+
+
+test <- as.mids(data_completet_dart)
+
+
+
+# calculate bias normal
+
+for(i in 1:length(datasets)){
+  bias <- datasets[[i]][[1]] - data_completet_dart[[i]]
+}
+
+```
+
+# ItT Approach (default method so pmm)
+
+
+```{r}
+##!!!! Name of the datasets is wrong!!!!
+
+
+# remove x_sqrd from missing dataset
+
+datasets_JAV <- lapply(datasets,function(x){
+  dataset <- x[[2]] %>% select(-x_sqrd)
+  })
+
+datasets_JAV_log <- lapply(datasets_log,function(x){
+  dataset <- x[[2]] %>% select(-x_sqrd)
+  })
+
+
+
+#Impute the values
+
+# data normal
+cl <- makeCluster(10)
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_JAV <- parLapply(cl, datasets_JAV, function(x){
+  imputations <- mice(x)
+}))
+
+stopCluster(cl)
+
+
+# Create the Variable X^2
+
+# data log normal
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_JAV_log <- parLapply(cl, datasets_JAV_log, function(x){
+  imputations <- mice(x)
+}))
+
+
+# Inpute for interaktion
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_JAV_interaktion <- parLapply(cl, datasets_interaktion, function(x){
+  
+  missing_data <- x[[2]]
+  imputations <- mice(missing_data)
+}))
+
+stopCluster(cl)
+
+```
+
+#Diagnostics for ItT
+
+```{r}
+
+
+data_completet_iTt <- lapply(imputated_data_set_JAV, FUN = complete, action = "long", include = TRUE)
+data_completet_iTt_log <- lapply(imputated_data_set_JAV_log, FUN = complete, action = "long", include = TRUE)
+data_completet_iTt_interaktion <- lapply(imputated_data_set_JAV_interaktion, FUN = complete, action = "long", include = TRUE)
+
+# Erstelle x Squared for all imputated data
+
+for(i in 1:length(datasets_JAV)){
+  data_completet_iTt[[i]]$x_sqrd <- data_completet_iTt[[i]]$x1^2
+  data_completet_iTt_log[[i]]$x_sqrd <-  data_completet_iTt_log[[i]]$x1^2
+}
+
+
+
+test <- as.mids(data_completet_iTt[[1]])
+
+```
+
+
+
+
+
+
+
+# JAV Aproach
+
+```{r}
+#Impute the values
+
+# data normal
+cl <- makeCluster(10)
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_last <- parLapply(cl, datasets, function(x){
+  
+  imputations <- mice(x)
+}))
+
+stopCluster(cl)
+
+
+# Create the Variable X^2
+
+# data log normal
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_last_log <- parLapply(cl, datasets_log, function(x){
+  imputations <- mice(x)
+}))
+
+
+# Inpute for interaktion
+
+clusterEvalQ(cl, library(mice))
+
+system.time(imputated_data_set_last_interaktion <- parLapply(cl, datasets_interaktion, function(x){
+  
+  missing_data <- x[[2]]
+  imputations <- mice(missing_data)
+}))
+
+stopCluster(cl)
+
 
 ```
 
