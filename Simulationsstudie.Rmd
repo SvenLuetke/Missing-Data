@@ -538,21 +538,30 @@ for(i in 1:length(datasets)){
   
   coverage <- lower < true_value & true_value < higher
   test_design[i,5] <- mean(coverage)
+  
+   # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  
   }
 
 
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-test_design %>% 
+diagnostics_cart <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
 
 
 # cart log-normal
@@ -568,6 +577,14 @@ for(i in 1:length(datasets_log)){
   
   coverage <- lower < true_value & true_value < higher
   test_design[i,5] <- mean(coverage)
+  
+  # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets_log[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
   print(i)
   }
 
@@ -575,7 +592,7 @@ for(i in 1:length(datasets_log)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
 colnames(test_design)
 
 
@@ -583,7 +600,7 @@ colnames(test_design)
 
 test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
 
 
 # For interaktion
@@ -599,22 +616,33 @@ for(i in 1:length(datasets_interaktion)){
   
   coverage <- lower < true_value & true_value < higher
   test_design[i,5] <- mean(coverage)
+  
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets_interaktion[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  
   print(i)
+  
+  
+  
   }
 
 
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-test_design %>% 
+diagnostics_cart_interaktion <- test_design %>%  
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
 
 
 
@@ -654,8 +682,6 @@ system.time(imputated_data_set_JAV <- parLapply(cl, datasets_JAV, function(x){
 stopCluster(cl)
 
 
-# Create the Variable X^2
-
 # data log normal
 
 clusterEvalQ(cl, library(mice))
@@ -683,21 +709,124 @@ stopCluster(cl)
 
 ```{r}
 
+# normal data
 
-data_completet_iTt <- lapply(imputated_data_set_JAV, FUN = complete, action = "long", include = TRUE)
-data_completet_iTt_log <- lapply(imputated_data_set_JAV_log, FUN = complete, action = "long", include = TRUE)
-data_completet_iTt_interaktion <- lapply(imputated_data_set_JAV_interaktion, FUN = complete, action = "long", include = TRUE)
-
-# Erstelle x Squared for all imputated data
+true_value <- c(0,4,2,1)
 
 for(i in 1:length(datasets_JAV)){
-  data_completet_iTt[[i]]$x_sqrd <- data_completet_iTt[[i]]$x1^2
-  data_completet_iTt_log[[i]]$x_sqrd <-  data_completet_iTt_log[[i]]$x1^2
-}
+  imp <- imputated_data_set_JAV[[i]]
+  fit <- with(imp, lm(y ~ x1 + x2 + I(x1^2)))
+  tab <- summary(pool(fit), "all", conf.int = TRUE)
+  lower <- tab$`2.5 %`
+  higher <- tab$`97.5 %`
+  
+  coverage <- lower < true_value & true_value < higher
+  test_design[i,5] <- mean(coverage)
+  
+  # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  print(i)
+  }
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+diagnostic_ItT <- test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
 
 
 
-test <- as.mids(data_completet_iTt[[1]])
+# for log data
+
+true_value <- c(0,4,2,1)
+
+for(i in 1:length(datasets_JAV_log)){
+  imp <- imputated_data_set_JAV_log[[i]]
+  fit <- with(imp, lm(y ~ x1 + x2 + I(x1^2)))
+  tab <- summary(pool(fit), "all", conf.int = TRUE)
+  lower <- tab$`2.5 %`
+  higher <- tab$`97.5 %`
+  
+  coverage <- lower < true_value & true_value < higher
+  test_design[i,5] <- mean(coverage)
+  
+  # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets_log[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  print(i)
+  }
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+diagnostics_ItT_log <- test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+
+
+
+
+# for interaktion
+
+true_value <- c(0,2,3,2,2)
+
+for(i in 1:length(datasets_interaktion)){
+  imp <- imputated_data_set_JAV_interaktion[[i]]
+  fit <- with(imp, lm(y ~ x1 * x2 + x3))
+  tab <- summary(pool(fit), "all", conf.int = TRUE)
+  lower <- tab$`2.5 %`
+  higher <- tab$`97.5 %`
+  
+  coverage <- lower < true_value & true_value < higher
+  test_design[i,5] <- mean(coverage)
+  
+  # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets_interaktion[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  print(i)
+  }
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+diagnostics_ItT_interaction <- test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
 
 ```
 
@@ -718,8 +847,8 @@ cl <- makeCluster(10)
 clusterEvalQ(cl, library(mice))
 
 system.time(imputated_data_set_last <- parLapply(cl, datasets, function(x){
-  
-  imputations <- mice(x)
+   missing_data <- x[[2]]
+  imputations <- mice(missing_data)
 }))
 
 stopCluster(cl)
@@ -732,7 +861,8 @@ stopCluster(cl)
 clusterEvalQ(cl, library(mice))
 
 system.time(imputated_data_set_last_log <- parLapply(cl, datasets_log, function(x){
-  imputations <- mice(x)
+  missing_data <- x[[2]]
+  imputations <- mice(missing_data)
 }))
 
 
@@ -747,6 +877,132 @@ system.time(imputated_data_set_last_interaktion <- parLapply(cl, datasets_intera
 }))
 
 stopCluster(cl)
+
+
+```
+
+# Diagnostic JAV
+
+```{r}
+
+
+# JAV NORMAL
+
+true_value <- c(0,4,2,1)
+
+for(i in 1:length(datasets)){
+  imp <- imputated_data_set_last[[i]]
+  fit <- with(imp, lm(y ~ x1 + x2 + x_sqrd))
+  tab <- summary(pool(fit), "all", conf.int = TRUE)
+  lower <- tab$`2.5 %`
+  higher <- tab$`97.5 %`
+  
+  coverage <- lower < true_value & true_value < higher
+  test_design[i,5] <- mean(coverage)
+  
+  # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  print(i)
+  }
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+diagnostics_JAV <- test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+
+# JAV LOG
+
+
+true_value <- c(0,4,2,1)
+
+for(i in 1:length(datasets_log)){
+  imp <- imputated_data_set_last_log[[i]]
+  fit <- with(imp, lm(y ~ x1 + x2 + x_sqrd))
+  tab <- summary(pool(fit), "all", conf.int = TRUE)
+  lower <- tab$`2.5 %`
+  higher <- tab$`97.5 %`
+  
+  coverage <- lower < true_value & true_value < higher
+  test_design[i,5] <- mean(coverage)
+  
+  # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets_log[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  print(i)
+  }
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+diagnostics_log <- test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+
+
+
+
+# for interaktion
+
+true_value <- c(0,2,3,2,2)
+
+for(i in 1:length(datasets_interaktion)){
+  imp <- imputated_data_set_last_interaktion[[i]]
+  fit <- with(imp, lm(y ~ x1*x2 + x3))
+  tab <- summary(pool(fit), "all", conf.int = TRUE)
+  lower <- tab$`2.5 %`
+  higher <- tab$`97.5 %`
+  
+  coverage <- lower < true_value & true_value < higher
+  test_design[i,5] <- mean(coverage)
+  
+  # bias
+  
+  data <- complete(imp, action = "long", include = FALSE)
+  bias <- mean(data$x1) - mean(datasets_interaktion[[i]][[1]]$x1)
+  
+  test_design[i,6] <- bias
+  
+  print(i)
+  }
+
+
+# rename columns
+
+
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)
+
+
+# get coverage by mechanism, missing and n
+
+diagnostics_interaktion_JAV <- test_design %>% 
+  group_by(n_obs, missing_mechanism, missing) %>% 
+  summarise(coverage_rate = mean(coverage), bias = mean(bias))
 
 
 ```
