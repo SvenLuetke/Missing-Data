@@ -2,6 +2,8 @@
 title: "Simulationsstudie"
 output: html_document
 ---
+Authors: Sven Lütke-Bordewick, Luisa Schuhmann , Kim Schäffner
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -158,7 +160,7 @@ generate_testdata_log <- function(n_obs,
 test_design <- expand.grid(c(300L, 1000L), # number of observartions
                            c("MCAR", "MAR"),
                            c(0.1, 0.3, 0.5),
-                           c(1:1000), stringsAsFactors = FALSE)
+                           c(1:1000), stringsAsFactors = FALSE) # seeds for datageneration
 
 names(test_design) <- c("n_obs", "missing_mechanism", "missing", "seed")
 
@@ -336,25 +338,68 @@ stopCluster(cl)
 # Test if default number of iterations is fine
 
 ```{r}
-lapply(imputated_data_set, plot)
+# nomral data
 
-### SAVE THE IMPUTED DATASETS
-
-# saveRDS(imputated_data_set, file = "imputed_data_100_iterations.rds")
-# saveRDS(imputated_data_set_interaktion, file = "imputated_dataset_ineraktion.rds")
-#saveRDS(imputated_data_set_log, file = "imputated_data_log.rds")
+cl <- makeCluster(10)
 
 
-### LOAD IMPUTED DATASETS
+datasets_iteration <- datasets[1:12] # test iterations for each type of data
+
+clusterEvalQ(cl, library(smcfcs))
+
+system.time(imputated_data_set_iteration <- parLapply(cl, datasets_iteration, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "y ~ x1 + x2 + x_sqrd", method =c("", "x1^2", "norm", ""), 
+                        rjlimit = 3000, numit = 100)
+}))
 
 
+
+lapply(imputated_data_set_iteration, plot) # plot the data to see when there is convergence (should be before the default of 10 iterations otherwise we need more)
+
+# For Log normal data
+
+
+datasets_iteration <- datasets_log[1:12] # test iterations for each type of data
+
+clusterEvalQ(cl, library(smcfcs))
+
+system.time(imputated_data_set_iteration_log <- parLapply(cl, datasets_iteration, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "y ~ x1 + x2 + x_sqrd", method =c("", "x1^2", "norm", ""), 
+                        rjlimit = 3000, numit = 100)
+}))
+
+lapply(imputated_data_set_iteration_log, plot)
+
+
+# For interaktion data
+
+
+datasets_iteration <- datasets_interaktion[1:12] # test iterations for each type of data
+
+clusterEvalQ(cl, library(smcfcs))
+
+system.time(imputated_data_set_iteration_interaktion <- parLapply(cl, datasets_iteration, function(x){
+  mis_data <- x[[2]]
+  
+  
+  imputations <- smcfcs(mis_data, smtype = "lm", smformula = "y ~ x1 + x2 + x_sqrd", method =c("", "x1^2", "norm", ""), 
+                        rjlimit = 3000, numit = 100)
+}))
+
+lapply(imputated_data_set_iteration_interaktion, plot)
 
 ```
 
 # Rubins Rule to get Values
 
 ```{r}
-# true parameter x^2:
+# true parameter:
 
 true_value <- c(0,4,2,1)
 
@@ -373,6 +418,10 @@ for(i in 1:length(datasets)){
     
     test_design[i,6] <- mean(bias)
     
+    CI_wide <- sum_model$`upper)` - sum_model$`(lower` 
+    
+    test_design[i,7] <- mean(CI_wide)
+    
     print(i)
     }
 
@@ -380,21 +429,25 @@ for(i in 1:length(datasets)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-test_design %>% 
+diagnostics <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+
+test_design_smcfcs_normal <- test_design
+
 
 ```
 
 
 ```{r}
-# true parameter x^2:
+# true parameter:
 
 true_value <- c(0,4,2,1)
 
@@ -412,6 +465,9 @@ for(i in 1:length(datasets_log)){
     bias <- imputated_data_set_log[[i]]$impDatasets[[1]]$x1 - datasets_log[[i]][[1]]$x1
     
     test_design[i,6] <- mean(bias)
+    CI_wide <- sum_model$`upper)` - sum_model$`(lower` 
+    
+    test_design[i,7] <- mean(CI_wide)
     
     print(i)
     }
@@ -420,15 +476,20 @@ for(i in 1:length(datasets_log)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
+
 
 
 # get coverage by mechanism, missing and n
 
-test_design %>% 
+diagnostics_log <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+
+test_design_log <- test_design
+
 
 ```
 
@@ -442,15 +503,19 @@ true_value <- c(0,2,3,2,2)
 # Get Coverage of Imputed Dataset
 
 for(i in 1:length(datasets_interaktion)){
-    impobj <- imputationList(imputated_data_set_interaktion[[i]]$impDatasets) 
+    impobj <- imputationList(imputated_dataset_interaktion[[i]]$impDatasets) 
     models <- with(impobj, lm(y~x1+x2+x1*x2+x3))
     sum_model <- summary(MIcombine(models))
     coverage <- sum_model$`(lower` < true_value & true_value < sum_model$`upper)`    
     test_design[i,5] <- mean(coverage)
     
     
-    bias <- imputated_data_set_interaktion[[i]]$impDatasets[[1]]$x1 - datasets_interaktion[[i]][[1]]$x1
+    bias <- imputated_dataset_interaktion[[i]]$impDatasets[[1]]$x1 - datasets_interaktion[[i]][[1]]$x1
     test_design[i,6] <- mean(bias)
+    
+    CI_wide <- sum_model$`upper)` - sum_model$`(lower` 
+    
+    test_design[i,7] <- mean(CI_wide)
       
     print(i)
 }
@@ -459,15 +524,18 @@ for(i in 1:length(datasets_interaktion)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-test_design %>% 
+diagnostics_interaktion <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+
+test_design_interaktion <- test_design
 
 ```
 
@@ -546,14 +614,16 @@ for(i in 1:length(datasets)){
   
   test_design[i,6] <- bias
   
+  test_design[i,7] <- mean(higher - lower)
   
+  print(i)
   }
 
 
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
@@ -561,7 +631,11 @@ colnames(test_design)
 
 diagnostics_cart <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+
+test_design_cart <- test_design
+
 
 
 # cart log-normal
@@ -585,6 +659,10 @@ for(i in 1:length(datasets_log)){
   
   test_design[i,6] <- bias
   
+  
+  test_design[i,7] <- mean(higher - lower)
+  
+  
   print(i)
   }
 
@@ -592,15 +670,16 @@ for(i in 1:length(datasets_log)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
-# get coverage by mechanism, missing and n
-
-test_design %>% 
+diagnostics_cart_log <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+
+test_design_log_cart <- test_design
 
 
 # For interaktion
@@ -623,6 +702,7 @@ for(i in 1:length(datasets_interaktion)){
   
   test_design[i,6] <- bias
   
+  test_design[i,7] <- mean(higher - lower)
   
   print(i)
   
@@ -634,16 +714,17 @@ for(i in 1:length(datasets_interaktion)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-diagnostics_cart_interaktion <- test_design %>%  
+diagnostics_cart_interaktion <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
 
+test_design_cart_interaktion <- test_design
 
 
 
@@ -653,16 +734,15 @@ diagnostics_cart_interaktion <- test_design %>%
 
 
 ```{r}
-##!!!! Name of the datasets is wrong!!!!
 
 
 # remove x_sqrd from missing dataset
 
-datasets_JAV <- lapply(datasets,function(x){
+datasets_ItT <- lapply(datasets,function(x){
   dataset <- x[[2]] %>% select(-x_sqrd)
   })
 
-datasets_JAV_log <- lapply(datasets_log,function(x){
+datasets_ItT_log <- lapply(datasets_log,function(x){
   dataset <- x[[2]] %>% select(-x_sqrd)
   })
 
@@ -675,7 +755,7 @@ cl <- makeCluster(10)
 
 clusterEvalQ(cl, library(mice))
 
-system.time(imputated_data_set_JAV <- parLapply(cl, datasets_JAV, function(x){
+system.time(imputated_data_set_ItT <- parLapply(cl, datasets_ItT, function(x){
   imputations <- mice(x)
 }))
 
@@ -686,7 +766,7 @@ stopCluster(cl)
 
 clusterEvalQ(cl, library(mice))
 
-system.time(imputated_data_set_JAV_log <- parLapply(cl, datasets_JAV_log, function(x){
+system.time(imputated_data_set_ItT_log <- parLapply(cl, datasets_ItT_log, function(x){
   imputations <- mice(x)
 }))
 
@@ -695,7 +775,7 @@ system.time(imputated_data_set_JAV_log <- parLapply(cl, datasets_JAV_log, functi
 
 clusterEvalQ(cl, library(mice))
 
-system.time(imputated_data_set_JAV_interaktion <- parLapply(cl, datasets_interaktion, function(x){
+system.time(imputated_data_set_ItT_interaktion <- parLapply(cl, datasets_interaktion, function(x){
   
   missing_data <- x[[2]]
   imputations <- mice(missing_data)
@@ -713,8 +793,8 @@ stopCluster(cl)
 
 true_value <- c(0,4,2,1)
 
-for(i in 1:length(datasets_JAV)){
-  imp <- imputated_data_set_JAV[[i]]
+for(i in 1:length(datasets_ItT)){
+  imp <- imputated_data_set_ItT[[i]]
   fit <- with(imp, lm(y ~ x1 + x2 + I(x1^2)))
   tab <- summary(pool(fit), "all", conf.int = TRUE)
   lower <- tab$`2.5 %`
@@ -730,6 +810,8 @@ for(i in 1:length(datasets_JAV)){
   
   test_design[i,6] <- bias
   
+  test_design[i,7] <- mean(higher - lower)
+  
   print(i)
   }
 
@@ -737,15 +819,18 @@ for(i in 1:length(datasets_JAV)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-diagnostic_ItT <- test_design %>% 
+diagnostics_ItT <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+test_design_ItT <- test_design
+
 
 
 
@@ -753,8 +838,8 @@ diagnostic_ItT <- test_design %>%
 
 true_value <- c(0,4,2,1)
 
-for(i in 1:length(datasets_JAV_log)){
-  imp <- imputated_data_set_JAV_log[[i]]
+for(i in 1:length(datasets_ItT_log)){
+  imp <- imputated_data_set_ItT_log[[i]]
   fit <- with(imp, lm(y ~ x1 + x2 + I(x1^2)))
   tab <- summary(pool(fit), "all", conf.int = TRUE)
   lower <- tab$`2.5 %`
@@ -769,15 +854,14 @@ for(i in 1:length(datasets_JAV_log)){
   bias <- mean(data$x1) - mean(datasets_log[[i]][[1]]$x1)
   
   test_design[i,6] <- bias
+  test_design[i,7] <- mean(higher - lower)
   
   print(i)
   }
 
 
-# rename columns
 
-
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
@@ -785,7 +869,9 @@ colnames(test_design)
 
 diagnostics_ItT_log <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+test_design_ItT_log <- test_design
 
 
 
@@ -795,7 +881,7 @@ diagnostics_ItT_log <- test_design %>%
 true_value <- c(0,2,3,2,2)
 
 for(i in 1:length(datasets_interaktion)){
-  imp <- imputated_data_set_JAV_interaktion[[i]]
+  imp <- imputated_data_set_ItT_interaktion[[i]]
   fit <- with(imp, lm(y ~ x1 * x2 + x3))
   tab <- summary(pool(fit), "all", conf.int = TRUE)
   lower <- tab$`2.5 %`
@@ -810,6 +896,7 @@ for(i in 1:length(datasets_interaktion)){
   bias <- mean(data$x1) - mean(datasets_interaktion[[i]][[1]]$x1)
   
   test_design[i,6] <- bias
+  test_design[i,7] <- mean(higher - lower)
   
   print(i)
   }
@@ -817,16 +904,18 @@ for(i in 1:length(datasets_interaktion)){
 
 # rename columns
 
-
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-diagnostics_ItT_interaction <- test_design %>% 
+diagnostics_ItT_interaktion <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+test_design_ItT_interaktion <- test_design
+
 
 ```
 
@@ -850,8 +939,6 @@ system.time(imputated_data_set_last <- parLapply(cl, datasets, function(x){
    missing_data <- x[[2]]
   imputations <- mice(missing_data)
 }))
-
-stopCluster(cl)
 
 
 # Create the Variable X^2
@@ -906,6 +993,7 @@ for(i in 1:length(datasets)){
   bias <- mean(data$x1) - mean(datasets[[i]][[1]]$x1)
   
   test_design[i,6] <- bias
+  test_design[i,7] <- mean(higher - lower)
   
   print(i)
   }
@@ -913,8 +1001,9 @@ for(i in 1:length(datasets)){
 
 # rename columns
 
+# rename columns
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
@@ -922,7 +1011,9 @@ colnames(test_design)
 
 diagnostics_JAV <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+test_design_JAV <- test_design
 
 # JAV LOG
 
@@ -945,6 +1036,7 @@ for(i in 1:length(datasets_log)){
   bias <- mean(data$x1) - mean(datasets_log[[i]][[1]]$x1)
   
   test_design[i,6] <- bias
+  test_design[i,7] <- mean(higher - lower)
   
   print(i)
   }
@@ -953,15 +1045,17 @@ for(i in 1:length(datasets_log)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-diagnostics_log <- test_design %>% 
+diagnostics_JAV_log <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+test_design_JAV_log <- test_design
 
 
 
@@ -986,7 +1080,7 @@ for(i in 1:length(datasets_interaktion)){
   bias <- mean(data$x1) - mean(datasets_interaktion[[i]][[1]]$x1)
   
   test_design[i,6] <- bias
-  
+  test_design[i,7] <- mean(higher - lower)
   print(i)
   }
 
@@ -994,15 +1088,129 @@ for(i in 1:length(datasets_interaktion)){
 # rename columns
 
 
-colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias")
+colnames(test_design)<- c("n_obs","missing_mechanism", "missing", "seed", "coverage", "bias", "CI_width")
 colnames(test_design)
 
 
 # get coverage by mechanism, missing and n
 
-diagnostics_interaktion_JAV <- test_design %>% 
+diagnostics_JAV_interaktion <- test_design %>% 
   group_by(n_obs, missing_mechanism, missing) %>% 
-  summarise(coverage_rate = mean(coverage), bias = mean(bias))
+  summarise(coverage_rate = mean(coverage), bias = mean(bias), CI_width = mean(CI_width))
+
+test_design_JAV_interaktion <- test_design
+
+
+
+```
+
+
+# Graphics
+
+```{r}
+# boxplot normal
+
+dat1 <- test_design_smcfcs_normal %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat2 <- test_design_cart %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat3 <- test_design_JAV %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat4 <- test_design_ItT %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+
+dat1$method <- "SMC-FCS"
+dat2$method <- "CART"
+dat3$method <- "JAV"
+dat4$method <- "ItT"
+
+dat <- rbind(dat1,dat2,dat3,dat4)
+dat$method <- factor(dat$method, c("SMC-FCS", "JAV", "ItT", "CART"))
+
+
+dat %>% ggplot(aes(x = bias/2)) +
+  geom_boxplot(aes(fill = method)) +
+  facet_wrap(~ missing) +
+  coord_flip() +
+  labs(subtitle  = "Bias for different Method with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
+  theme_bw()
+
+
+# CI:
+
+
+
+dat %>% ggplot(aes(x = CI_width)) +
+  geom_boxplot(aes(fill = method)) +
+  facet_wrap(~ missing) +
+  coord_flip() +
+  labs(subtitle  = "Bias for different Method with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
+  theme_bw()
+
+
+
+
+
+# boxplot log
+
+dat1 <- test_design_log %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat2 <- test_design_log_cart %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat3 <- test_design_JAV_log %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing  != 0.3)
+dat4 <- test_design_ItT_log %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing  != 0.3)
+
+dat1$method <- "SMC-FCS"
+dat2$method <- "CART"
+dat3$method <- "JAV"
+dat4$method <- "ItT"
+
+dat <- rbind(dat1,dat2,dat3,dat4)
+dat$method <- factor(dat$method, c("SMC-FCS", "JAV", "ItT", "CART"))
+
+
+dat %>% ggplot(aes(x = bias/2)) +
+  geom_boxplot(aes(fill = method)) +
+  facet_wrap(~ missing) +
+  coord_flip() +
+  labs(subtitle  = "Bias for different Method with n = 1000 and x1 Log-Normal Distributed", x = "relative Bias", title = "Model 1" ) +
+  theme_bw()
+
+
+
+# CI:
+
+
+dat %>% ggplot(aes(x = CI_width)) +
+  geom_boxplot(aes(fill = method)) +
+  facet_wrap(~ missing) +
+  coord_flip() +
+  labs(subtitle  = "Bias for different Method with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
+  theme_bw()
+
+# boxplot interaktion
+
+dat1 <- test_design_interaktion %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat2 <- test_design_cart_interaktion %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat3 <- test_design_JAV_interaktion %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+dat4 <- test_design_ItT_interaktion %>% filter(missing_mechanism == "MAR" & n_obs == 1000 & missing != 0.3)
+
+dat1$method <- "SMC-FCS"
+dat2$method <- "CART"
+dat3$method <- "JAV"
+dat4$method <- "ItT"
+
+dat <- rbind(dat1,dat2,dat3,dat4)
+dat$method <- factor(dat$method, c("SMC-FCS", "JAV", "ItT", "CART"))
+
+dat %>% 
+  ggplot(aes(x = bias/2)) +
+  geom_boxplot(aes(fill = method)) +
+  facet_wrap(~ missing) +
+  coord_flip() +
+  labs(subtitle  = "Bias for different Method with n = 1000 and interaction between x1 and x2", x = "relative Bias", title = "Model 2" ) +
+  theme_bw()
+
+dat %>% ggplot(aes(x = CI_width)) +
+  geom_boxplot(aes(fill = method)) +
+  facet_wrap(~ missing) +
+  coord_flip() +
+  labs(subtitle  = "Bias for different Method with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
+  theme_bw()
 
 
 ```
