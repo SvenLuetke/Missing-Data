@@ -1129,8 +1129,11 @@ dat %>% ggplot(aes(x = bias/2)) +
   facet_wrap(~ missing) +
   coord_flip() +
   labs(subtitle  = "Bias for different Method with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
-  theme_bw()
 
+  theme_bw() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
 
 # CI:
 
@@ -1168,7 +1171,11 @@ dat %>% ggplot(aes(x = bias/2)) +
   facet_wrap(~ missing) +
   coord_flip() +
   labs(subtitle  = "Bias for different Method with n = 1000 and x1 Log-Normal Distributed", x = "relative Bias", title = "Model 1" ) +
-  theme_bw()
+  theme_bw() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
 
 
 
@@ -1179,7 +1186,7 @@ dat %>% ggplot(aes(x = CI_width)) +
   geom_boxplot(aes(fill = method)) +
   facet_wrap(~ missing) +
   coord_flip() +
-  labs(subtitle  = "Bias for different Method with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
+  labs(subtitle  = "Bias for different Methods with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
   theme_bw()
 
 # boxplot interaktion
@@ -1202,14 +1209,18 @@ dat %>%
   geom_boxplot(aes(fill = method)) +
   facet_wrap(~ missing) +
   coord_flip() +
-  labs(subtitle  = "Bias for different Method with n = 1000 and interaction between x1 and x2", x = "relative Bias", title = "Model 2" ) +
-  theme_bw()
+  labs(subtitle  = "Bias for different Methods with n = 1000 and interaction between x1 and x2", x = "relative Bias", title = "Model 2" ) +
+  theme_bw() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
 
 dat %>% ggplot(aes(x = CI_width)) +
   geom_boxplot(aes(fill = method)) +
   facet_wrap(~ missing) +
   coord_flip() +
-  labs(subtitle  = "Bias for different Method with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
+  labs(subtitle  = "Bias for different Methods with n = 1000 and normal Distribution of x1", x = "relative Bias", title = "Model 1" ) +
   theme_bw()
 
 
